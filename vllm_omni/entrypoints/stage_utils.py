@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import logging
 import os
+import re
+import tempfile
 from multiprocessing import shared_memory as _shm
 from typing import Any
 
@@ -37,6 +39,17 @@ def resolve_stage_physical_devices(
         visible_device_list = _parse_device_list(visible_devices)
         device_list = _map_device_list(stage_id, device_list, visible_device_list)
     return ",".join(device_list)
+
+
+def _win_shm_dir() -> str:
+    path = os.path.join(tempfile.gettempdir(), "vllm_omni_shm_payloads")
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def windows_shm_payload_path(name: str) -> str:
+    safe = re.sub(r"[^A-Za-z0-9_.-]", "_", name)
+    return os.path.join(_win_shm_dir(), f"{safe}.bin")
 
 
 def set_stage_devices(
@@ -184,6 +197,14 @@ def shm_write_bytes(payload: bytes, name: str | None = None) -> dict[str, Any]:
 
     Caller should close the segment; the receiver should unlink.
     """
+    if os.name == "nt" and name:
+        path = windows_shm_payload_path(name)
+        tmp_path = f"{path}.tmp"
+        with open(tmp_path, "wb") as f:
+            f.write(payload)
+        os.replace(tmp_path, path)
+        return {"name": name, "size": len(payload), "win_file": path}
+
     try:
         shm = _shm.SharedMemory(create=True, size=len(payload), name=name)
     except FileExistsError:
@@ -211,6 +232,16 @@ def shm_write_bytes(payload: bytes, name: str | None = None) -> dict[str, Any]:
 
 def shm_read_bytes(meta: dict[str, Any]) -> bytes:
     """Read bytes from SharedMemory by meta {name,size} and cleanup."""
+    win_file = meta.get("win_file") if isinstance(meta, dict) else None
+    if os.name == "nt" and win_file:
+        with open(win_file, "rb") as f:
+            data = f.read(meta["size"])
+        try:
+            os.remove(win_file)
+        except FileNotFoundError:
+            pass
+        return data
+
     shm = _shm.SharedMemory(name=meta["name"])  # type: ignore[index]
     mv = memoryview(shm.buf)
     data = bytes(mv[: meta["size"]])

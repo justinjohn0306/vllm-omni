@@ -11,6 +11,7 @@ import asyncio
 import concurrent.futures
 import dataclasses
 import json
+import os
 import queue
 import threading
 import time
@@ -404,7 +405,10 @@ class AsyncOmniEngine:
     ) -> None:
         """Create loop, initialize stages, then run Orchestrator."""
 
-        loop = asyncio.new_event_loop()
+        if os.name == "nt" and hasattr(asyncio, "WindowsSelectorEventLoopPolicy"):
+            loop = asyncio.WindowsSelectorEventLoopPolicy().new_event_loop()
+        else:
+            loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
 
         async def _run_orchestrator() -> None:

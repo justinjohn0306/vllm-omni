@@ -11,6 +11,7 @@ import os
 
 # Image generation API imports
 import random
+import sys
 import time
 from argparse import Namespace
 from collections.abc import AsyncIterator
@@ -422,6 +423,36 @@ async def omni_run_server(args, **uvicorn_kwargs) -> None:
     await omni_run_server_worker(listen_address, sock, args, **uvicorn_kwargs)
 
 
+async def _serve_http_compat(app: Any, sock: Any, enable_ssl_refresh: bool = False, **uvicorn_kwargs: Any):
+    if sys.platform != "win32":
+        return await serve_http(
+            app,
+            sock=sock,
+            enable_ssl_refresh=enable_ssl_refresh,
+            **uvicorn_kwargs,
+        )
+
+    loop = asyncio.get_running_loop()
+    original_add_signal_handler = loop.add_signal_handler
+
+    def add_signal_handler_compat(sig: Any, callback: Any, *args: Any) -> None:
+        try:
+            original_add_signal_handler(sig, callback, *args)
+        except NotImplementedError:
+            logger.debug("Ignoring unsupported Windows signal handler registration for %s", sig)
+
+    loop.add_signal_handler = add_signal_handler_compat  # type: ignore[method-assign]
+    try:
+        return await serve_http(
+            app,
+            sock=sock,
+            enable_ssl_refresh=enable_ssl_refresh,
+            **uvicorn_kwargs,
+        )
+    finally:
+        loop.add_signal_handler = original_add_signal_handler  # type: ignore[method-assign]
+
+
 async def omni_run_server_worker(listen_address, sock, args, client_config=None, **uvicorn_kwargs) -> None:
     """Run a single API server worker."""
 
@@ -520,7 +551,7 @@ async def omni_run_server_worker(listen_address, sock, args, client_config=None,
                     scope["state"]["request_timestamp"] = time.time()
                 await self._inner(scope, receive, send)
 
-        shutdown_task = await serve_http(
+        shutdown_task = await _serve_http_compat(
             _TimestampMiddleware(app),
             sock=sock,
             enable_ssl_refresh=args.enable_ssl_refresh,
@@ -776,11 +807,18 @@ async def omni_init_app_state(
     # handling and need to see the real flag, otherwise they silently fall
     # back to False and mismatch the engine-side bitmask gating.
     if vllm_config is not None:
-        from vllm.tool_parsers.structural_tag_registry import (
-            set_enable_structured_outputs_in_reasoning,
-        )
-
-        set_enable_structured_outputs_in_reasoning(vllm_config.structured_outputs_config.enable_in_reasoning)
+        try:
+            from vllm.tool_parsers.structural_tag_registry import (
+                set_enable_structured_outputs_in_reasoning,
+            )
+        except ImportError:
+            logger.debug(
+                "vLLM structural tag registry does not expose "
+                "set_enable_structured_outputs_in_reasoning; skipping API-server "
+                "reasoning flag propagation."
+            )
+        else:
+            set_enable_structured_outputs_in_reasoning(vllm_config.structured_outputs_config.enable_in_reasoning)
 
     # Get supported tasks
     supported_tasks: set[str] = {"generate"}

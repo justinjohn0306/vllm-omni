@@ -6,6 +6,7 @@ import contextlib
 import dataclasses
 import os
 import socket
+import sys
 import threading
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
@@ -18,7 +19,13 @@ import zmq
 from omegaconf import OmegaConf
 from vllm.config import VllmConfig
 from vllm.logger import init_logger
-from vllm.utils.network_utils import get_open_ports_list, zmq_socket_ctx
+from vllm.utils.network_utils import (
+    get_open_port,
+    get_open_ports_list,
+    get_open_zmq_ipc_path,
+    get_tcp_uri,
+    zmq_socket_ctx,
+)
 from vllm.v1.engine.coordinator import DPCoordinator
 from vllm.v1.engine.utils import (
     CoreEngine,
@@ -41,6 +48,18 @@ from vllm_omni.entrypoints.utils import inject_omni_kv_config
 from vllm_omni.platforms import current_omni_platform
 
 logger = init_logger(__name__)
+
+
+def _open_zmq_path() -> str:
+    """Return an open ZMQ endpoint valid on the current OS.
+
+    zmq cannot bind ``ipc://`` on Windows, so use a TCP loopback endpoint
+    there; POSIX keeps the upstream IPC path.
+    """
+    if sys.platform == "win32":
+        return get_tcp_uri("127.0.0.1", get_open_port())
+    return get_open_zmq_ipc_path()
+
 
 StageRoute = tuple[int, int]
 
@@ -951,12 +970,10 @@ def launch_stage_replica(
             )
         return
 
-    from vllm.utils.network_utils import get_open_zmq_ipc_path
-
     from vllm_omni.engine.stage_engine_core_proc_manager import StageEngineCoreProcManager
 
     addresses = get_engine_zmq_addresses(vllm_config)
-    handshake_address = get_open_zmq_ipc_path()
+    handshake_address = _open_zmq_path()
     engines_to_handshake = [CoreEngine(index=0, local=True)]
     with scoped_spawn_device_env(stage_visible_devices, spawn_device_lock):
         engine_manager = StageEngineCoreProcManager(

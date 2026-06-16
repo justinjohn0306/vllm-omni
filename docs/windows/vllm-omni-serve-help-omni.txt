@@ -1,0 +1,236 @@
+﻿OmniConfig:
+  Configuration for vLLM-Omni multi-stage and diffusion models.
+
+  --async-chunk, --no-async-chunk
+                        Override the deploy YAML's ``async_chunk:`` bool.
+                        Unset leaves the YAML value in force. (default: None)
+  --auxiliary-text-encoder AUXILIARY_TEXT_ENCODER
+                        Auxiliary text encoder parameters model name or path
+                        (especially for Hidream-l1-full). (default: None)
+  --batch-timeout BATCH_TIMEOUT
+                        The timeout for the batch. (default: 10)
+  --boundary-ratio BOUNDARY_RATIO
+                        Boundary split ratio for low/high DiT in video models
+                        (e.g., 0.875 for Wan2.2). (default: None)
+  --cache-backend CACHE_BACKEND
+                        Cache backend for diffusion models, options:
+                        'tea_cache', 'cache_dit', 'mag_cache' (default: none)
+  --cache-config CACHE_CONFIG
+                        JSON string of cache configuration. TeaCache:
+                        '{"rel_l1_thresh": 0.2}'. MagCache: '{"mag_threshold":
+                        0.24, "mag_max_skip_steps": 5, "mag_retention_ratio":
+                        0.1}'. Calibration mode: add '"mag_calibrate": true'
+                        (default: None)
+  --cfg-parallel-size {1,2}
+                        Number of devices for CFG parallel computation for
+                        diffusion models. Equivalent to setting
+                        DiffusionParallelConfig.cfg_parallel_size. (default:
+                        1)
+  --default-sampling-params DEFAULT_SAMPLING_PARAMS
+                        Json str for Default sampling parameters,  Structure:
+                        {"<stage_id>": {<sampling_param>: value, ...}, ...}
+                        e.g., '{"0": {"num_inference_steps":50,
+                        "guidance_scale":1}}'. Currently only supports
+                        diffusion models. (default: None)
+  --deploy-config DEPLOY_CONFIG
+                        Path to a deploy config YAML (new format with
+                        stages/engine_args). Mutually exclusive with --stage-
+                        configs-path. (default: None)
+  --diffusers-call-kwargs DIFFUSERS_CALL_KWARGS
+                        JSON object passed to pipeline.__call__(). Useful for
+                        model-specific sampling parameters not covered by the
+                        vLLM-Omni interface.During request time, it is
+                        overridden by corresponding parameters in the vLLM-
+                        Omni interface.(e.g. '{"num_inference_steps": 30,
+                        "guidance_scale": 7.5}'). (default: {})
+  --diffusers-load-kwargs DIFFUSERS_LOAD_KWARGS
+                        JSON object passed to
+                        DiffusionPipeline.from_pretrained().It overrides
+                        corresponding parameters in the standard vLLM-Omni
+                        interface.(e.g. '{"use_safetensors": true, "variant":
+                        "fp16"}'). (default: {})
+  --diffusion-attention-backend DIFFUSION_ATTENTION_BACKEND
+                        Diffusion attention backend (shorthand). Sets the
+                        default backend for all diffusion attention roles,
+                        e.g. 'FLASH_ATTN'. May be combined with --diffusion-
+                        attention-config.per_role.* overrides, but mutually
+                        exclusive with --diffusion-attention-
+                        config.default.backend. (default: None)
+  --diffusion-attention-config DIFFUSION_ATTENTION_CONFIG, -dac DIFFUSION_ATTENTION_CONFIG
+                        Diffusion attention config. Accepts JSON or vLLM-style
+                        dotted flags. Examples: --diffusion-attention-
+                        config.default.backend FLASH_ATTN, --diffusion-
+                        attention-config.per_role.self.backend SPARSE_BLOCK,
+                        --diffusion-attention-config.per_role.cross.backend
+                        SAGE_ATTN, --diffusion-attention-config '{"default":
+                        {"backend": "FLASH_ATTN"}, "per_role": {"cross":
+                        {"backend": "SAGE_ATTN"}}}'. (default: None)
+  --diffusion-kv-cache-dtype DIFFUSION_KV_CACHE_DTYPE
+                        Diffusion attention KV cache dtype (e.g. fp8).
+                        Separate from vLLM --kv-cache-dtype. (default: None)
+  --diffusion-kv-cache-skip-layers DIFFUSION_KV_CACHE_SKIP_LAYERS
+                        Diffusion KV-cache quantization skip-layer selector,
+                        e.g. '0,1,4-8'. (default: None)
+  --diffusion-kv-cache-skip-steps DIFFUSION_KV_CACHE_SKIP_STEPS
+                        Diffusion KV-cache quantization skip-step selector,
+                        e.g. '0-9,20,25-30'. (default: None)
+  --diffusion-load-format {default,custom_pipeline,dummy,diffusers}
+                        How to load the diffusion pipeline: native/registry
+                        (default), custom_pipeline, dummy, or diffusers for
+                        the HF diffusers adapter. (default: None)
+  --diffusion-quantization-config DIFFUSION_QUANTIZATION_CONFIG
+                        JSON string for diffusion quantization_config.
+                        Example: '{"method":"gguf","gguf_model":"/path/to/mode
+                        l.gguf"}'. (default: None)
+  --disable-multithread-weight-load
+                        Disable multi-threaded safetensors loading (default:
+                        enabled with 4 threads). (default: True)
+  --enable-ar-profiler  Enable AR stage profiler to include AR stage timing in
+                        stage_durations. (default: False)
+  --enable-cache-dit-summary
+                        Enable cache-dit summary logging after diffusion
+                        forward passes. (default: False)
+  --enable-cpu-offload  Enable CPU offloading for diffusion models. (default:
+                        False)
+  --enable-diffusion-pipeline-profiler
+                        Enable diffusion pipeline profiler to display stage
+                        durations. (default: False)
+  --enable-layerwise-offload
+                        Enable layerwise (blockwise) offloading on DiT
+                        modules. (default: False)
+  --flow-shift FLOW_SHIFT
+                        Scheduler flow_shift for video models (e.g., 5.0 for
+                        720p, 12.0 for 480p). (default: None)
+  --force-cutlass-fp8   Diffusion-only runtime override for ModelOpt FP8
+                        checkpoints: force CUTLASS FP8 linear kernels on CUDA
+                        SM89+ devices. Ignored for BF16, non-ModelOpt FP8,
+                        ROCm, and older CUDA GPUs. (default: None)
+  --hsdp-replicate-size HSDP_REPLICATE_SIZE
+                        Number of replica groups for HSDP. Each group holds a
+                        full sharded copy. (default: 1)
+  --hsdp-shard-size HSDP_SHARD_SIZE
+                        Number of GPUs to shard weights across. -1 = auto
+                        (world_size / replicate_size). (default: -1)
+  --init-timeout INIT_TIMEOUT
+                        The timeout for initializing the stages. (default:
+                        600)
+  --log-file LOG_FILE   The path to the log file. (default: None)
+  --log-stats           Enable logging the stats. (default: False)
+  --max-generated-image-size MAX_GENERATED_IMAGE_SIZE
+                        The max size of generate image (height * width).
+                        (default: None)
+  --model-class-name MODEL_CLASS_NAME
+                        Override the diffusion pipeline class name (e.g.
+                        LTX2ImageToVideoPipeline). (default: None)
+  --no-guardrails       Disable Cosmos3 text/video safety guardrails for this
+                        server. (default: False)
+  --num-gpus NUM_GPUS   Number of GPUs to use for diffusion model inference.
+                        (default: None)
+  --num-weight-load-threads NUM_WEIGHT_LOAD_THREADS
+                        Number of threads for parallel weight loading
+                        (default: 4). (default: 4)
+  --omni                Enable vLLM-Omni mode for multi-modal and diffusion
+                        models (default: False)
+  --omni-dp-size-local OMNI_DP_SIZE_LOCAL
+                        Number of stage replicas this runtime launches locally
+                        for its own --stage-id. Process-local: head and every
+                        headless invocation read their own copy; values may
+                        differ across invocations. Requires --stage-id to be
+                        set when not equal to 1. (default: 1)
+  --omni-heartbeat-timeout OMNI_HEARTBEAT_TIMEOUT
+                        Seconds before an unreporting replica is marked ERROR
+                        in the OmniCoordinator. Only consulted on the head
+                        runtime. (default: 30.0)
+  --omni-lb-policy {random,round-robin,least-queue-length}
+                        Per-stage load-balancing policy used by the head's
+                        StagePool to route requests across UP replicas. Only
+                        consulted on the head runtime. (default: random)
+  --omni-master-address OMNI_MASTER_ADDRESS, -oma OMNI_MASTER_ADDRESS
+                        Hostname or IP address of the Omni orchestrator
+                        (master). (default: None)
+  --omni-master-port OMNI_MASTER_PORT, -omp OMNI_MASTER_PORT
+                        Port of the Omni orchestrator (master). (default:
+                        None)
+  --omni-replica-address OMNI_REPLICA_ADDRESS, -ora OMNI_REPLICA_ADDRESS
+                        Local bind address (this host's IP) that the headless
+                        stage advertises to the Omni master for its
+                        handshake/input/output ZMQ sockets. If unset, auto-
+                        detected via a UDP-connect routing probe against
+                        --omni-master-address. Override only when the auto-
+                        detected IP is wrong (e.g. multi-NIC host where the
+                        master is reachable on the wrong interface). (default:
+                        None)
+  --ray-address RAY_ADDRESS
+                        The address of the Ray cluster to connect to.
+                        (default: None)
+  --replica-id REPLICA_ID
+                        Deprecated and ignored � replica ids are auto-assigned
+                        by the master server. Specifying this flag prints a
+                        warning and has no effect. (default: None)
+  --ring RING_DEGREE, --ring-degree RING_DEGREE
+                        Ring Sequence Parallelism degree for diffusion models.
+                        Equivalent to setting
+                        DiffusionParallelConfig.ring_degree. (default: None)
+  --shm-threshold-bytes SHM_THRESHOLD_BYTES
+                        The threshold for the shared memory size. (default:
+                        65536)
+  --stage-configs-path STAGE_CONFIGS_PATH
+                        [Deprecated � will be removed in a future release]
+                        Path to a legacy stage configs YAML (stage_args
+                        format). Prefer --deploy-config for new-format deploy
+                        YAMLs. (default: None)
+  --stage-id STAGE_ID   Select and launch a single stage by stage_id.
+                        (default: None)
+  --stage-init-timeout STAGE_INIT_TIMEOUT
+                        The timeout for initializing a single stage in seconds
+                        (default: 300) (default: 300)
+  --stage-overrides STAGE_OVERRIDES
+                        Per-stage JSON overrides. Example: '{"0":
+                        {"gpu_memory_utilization": 0.8}, "2":
+                        {"enforce_eager": true}}' (default: None)
+  --step-execution      Enable per-step diffusion execution so running
+                        requests can be aborted between denoise steps.
+                        (default: False)
+  --task-type {CustomVoice,VoiceDesign,Base}
+                        Default task type for TTS models (CustomVoice,
+                        VoiceDesign, or Base). If not specified, will be
+                        inferred from model path. (default: None)
+  --tts-max-instructions-length TTS_MAX_INSTRUCTIONS_LENGTH
+                        Maximum length for TTS voice style instructions
+                        (overrides stage config, default: 500). (default:
+                        None)
+  --ulysses-mode {strict,advanced_uaa}
+                        Ulysses sequence-parallel mode for diffusion models.
+                        'strict' keeps the original divisibility requirements;
+                        'advanced_uaa' enables the experimental UAA path for
+                        uneven sequence/head shapes. (default: strict)
+  --use-hsdp            Enable HSDP (Hybrid Sharded Data Parallel) for
+                        diffusion models. Shards model weights across GPUs to
+                        reduce per-GPU memory usage. (default: False)
+  --usp ULYSSES_DEGREE, --ulysses-degree ULYSSES_DEGREE
+                        Ulysses Sequence Parallelism degree for diffusion
+                        models. Equivalent to setting
+                        DiffusionParallelConfig.ulysses_degree. (default:
+                        None)
+  --vae-patch-parallel-size VAE_PATCH_PARALLEL_SIZE
+                        VAE Patch Parallelism degree for diffusion models.
+                        Distributes VAE decode workload across multiple ranks
+                        by splitting the latent spatially. Equivalent to
+                        setting
+                        DiffusionParallelConfig.vae_patch_parallel_size.
+                        (default: 1)
+  --vae-use-slicing     Enable VAE slicing for memory optimization (useful for
+                        mitigating OOM issues). (default: False)
+  --vae-use-tiling      Enable VAE tiling for memory optimization (useful for
+                        mitigating OOM issues). (default: False)
+  --worker-backend {multi_process,ray}
+                        The backend to use for stage workers. (default:
+                        multi_process)
+
+When passing JSON CLI arguments, the following sets of arguments are equivalent:
+   --json-arg '{"key1": "value1", "key2": {"key3": "value2"}}'
+   --json-arg.key1 value1 --json-arg.key2.key3 value2
+
+Additionally, list elements can be passed individually using +:
+   --json-arg '{"key4": ["value3", "value4", "value5"]}'
+   --json-arg.key4+ value3 --json-arg.key4+='value4,value5'

@@ -65,10 +65,39 @@ from vllm.entrypoints.openai.engine.protocol import (
     UsageInfo,
 )
 from vllm.entrypoints.openai.engine.serving import ChatLikeRequest, clamp_prompt_logprobs
-from vllm.entrypoints.openai.parser.harmony_utils import (
-    get_streamable_parser_for_assistant,
-    parse_chat_output,
-)
+from vllm.entrypoints.openai.parser.harmony_utils import get_streamable_parser_for_assistant
+
+try:
+    from vllm.entrypoints.openai.parser.harmony_utils import parse_chat_output
+except ImportError:
+
+    def parse_chat_output(token_ids: list[int] | tuple[int, ...]) -> tuple[str | None, str | None, None]:
+        parser = get_streamable_parser_for_assistant()
+        for token_id in token_ids:
+            parser.process(token_id)
+
+        reasoning_parts: list[str] = []
+        content_parts: list[str] = []
+        for msg in parser.messages:
+            if msg.author.role != "assistant" or not msg.content:
+                continue
+            text = msg.content[0].text
+            if msg.channel == "analysis":
+                reasoning_parts.append(text)
+            elif msg.channel == "final" or (msg.channel == "commentary" and msg.recipient is None):
+                content_parts.append(text)
+
+        if parser.current_content:
+            if parser.current_channel == "analysis":
+                reasoning_parts.append(parser.current_content)
+            elif parser.current_channel == "final" or (
+                parser.current_channel == "commentary" and parser.current_recipient is None
+            ):
+                content_parts.append(parser.current_content)
+
+        return "\n".join(reasoning_parts) or None, "\n".join(content_parts) or None, None
+
+
 from vllm.entrypoints.openai.responses.protocol import ResponsesRequest
 from vllm.entrypoints.serve.utils.api_utils import should_include_usage
 from vllm.entrypoints.serve.utils.tool_calls_utils import maybe_filter_parallel_tool_calls

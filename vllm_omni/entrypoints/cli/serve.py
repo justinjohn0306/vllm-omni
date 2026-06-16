@@ -6,12 +6,17 @@ diffusion models (e.g., Qwen-Image) through the same CLI interface.
 """
 
 import argparse
+import asyncio
 import json
 import os
 import signal
+import sys
 from types import FrameType
 
-import uvloop
+try:
+    import uvloop
+except ImportError:
+    uvloop = None
 from vllm.entrypoints.cli.types import CLISubcommand
 from vllm.entrypoints.openai.cli_args import make_arg_parser, validate_parsed_serve_args
 from vllm.entrypoints.serve.utils.api_utils import VLLM_SUBCMD_PARSER_EPILOG
@@ -41,6 +46,19 @@ Search by using: `--help=<ConfigGroup>` to explore options by section (e.g.,
 --help=OmniConfig)
   Use `--help=all` to show all available flags at once.
 """
+
+
+def _run_omni_server(args: argparse.Namespace) -> None:
+    if sys.platform == "win32":
+        if hasattr(asyncio, "WindowsSelectorEventLoopPolicy"):
+            asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+        asyncio.run(omni_run_server(args))
+        return
+
+    if uvloop is not None:
+        uvloop.run(omni_run_server(args))
+    else:
+        asyncio.run(omni_run_server(args))
 
 
 def _ensure_vllm_platform():
@@ -104,7 +122,7 @@ class OmniServeCommand(CLISubcommand):
         if args.headless:
             run_headless(args)
         else:
-            uvloop.run(omni_run_server(args))
+            _run_omni_server(args)
 
     def validate(self, args: argparse.Namespace) -> None:
         if args.stage_id is not None and (args.omni_master_address is None or args.omni_master_port is None):

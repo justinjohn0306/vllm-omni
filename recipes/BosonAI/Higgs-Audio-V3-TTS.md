@@ -129,3 +129,107 @@ python examples/online_serving/text_to_speech/higgs_audio_v3/batch_speech_client
 - Known limitations:
   - Stage 1 (code2wav) must use `enforce_eager=true` (`@torch.inference_mode` incompatible with graph capture).
   - Stage 0 full-decode CUDA graph is experimental; sampler, delay-state updates, staging, and request postprocess remain outside the graph.
+
+### Native Windows, single NVIDIA GPU (experimental)
+
+#### Environment
+
+- OS: Windows 11
+- Python: 3.12+
+- CUDA: Windows CUDA toolkit, with a no-spaces path recommended for JIT tools
+- vLLM version: `0.23.0+cu132` Windows wheel
+- vLLM-Omni: native Windows compatibility patches from this fork
+- Example local model path: `C:\models\higgs-audio-v3-tts-4b`
+
+#### Command
+
+For complete Windows setup, see `README-WINDOWS.md`. The short version is:
+
+```bat
+conda create -n vllm-omni python=3.12 -y
+conda activate vllm-omni
+python -m pip install path\to\vllm-0.23.0+cu132-cp312-cp312-win_amd64.whl
+python -m pip install -e C:\src\vllm-omni
+```
+
+After the one-time environment variables from `README-WINDOWS.md` are saved,
+start the server with:
+
+```bat
+conda activate vllm-omni
+cd /d C:\src\vllm-omni
+set MODEL_PATH=C:\models\higgs-audio-v3-tts-4b
+
+tools\windows\run_higgs_vllm_omni.cmd
+tools\windows\run_higgs_vllm_omni.cmd status
+```
+
+Running `tools\windows\run_higgs_vllm_omni.cmd` again checks the existing
+server and does not reload the model if it is already running.
+
+On Windows, `--attention-backend TRITON_ATTN` and
+`VLLM_USE_FLASHINFER_SAMPLER=0` avoid FlashInfer JIT paths that can fail when
+CUDA tools live under paths containing spaces.
+
+Voice cloning through the loaded server:
+
+```bat
+set MODEL_ID=C:\models\higgs-audio-v3-tts-4b
+set REF_AUDIO=C:\audio\reference.wav
+set REF_TEXT=Transcript of the reference clip.
+
+tools\windows\clone_higgs_voice.cmd "Text to synthesize in the cloned voice."
+```
+
+The offline voice-clone example also works, but it creates its own engine and
+reloads the model every time:
+
+```bat
+conda activate vllm-omni
+cd /d C:\src\vllm-omni
+set MODEL_PATH=C:\models\higgs-audio-v3-tts-4b
+
+python examples\offline_inference\text_to_speech\higgs_audio_v3\end2end.py ^
+  --model "%MODEL_PATH%" ^
+  --deploy-config vllm_omni\deploy\higgs_multimodal_qwen3.yaml ^
+  --texts "Text to synthesize in the cloned voice." ^
+  --ref-audio C:\audio\reference.wav ^
+  --ref-text "Transcript of the reference clip." ^
+  --output-dir results\higgs_v3_clone
+```
+
+The offline example defaults to `TRITON_ATTN` on Windows. Pass
+`--attention-backend FLASHINFER` only if your shell has the Visual C++ compiler
+available as `cl.exe`.
+
+#### Verification
+
+Check the served model id:
+
+```bat
+curl.exe http://127.0.0.1:8095/v1/models
+```
+
+If serving from a local model path, the `/v1/audio/speech` request must use
+that exact local path as the `model` value:
+
+```bat
+set MODEL_ID_JSON=%MODEL_PATH:\=\\%
+
+curl.exe -X POST http://127.0.0.1:8095/v1/audio/speech ^
+  -H "Content-Type: application/json" ^
+  -d "{\"model\":\"%MODEL_ID_JSON%\",\"input\":\"Hello from native Windows vLLM Omni.\"}" ^
+  --output hello_higgs_cmd.wav
+```
+
+The output should be a 24 kHz mono WAV.
+
+#### Notes
+
+- The Windows path uses TCP loopback ZeroMQ endpoints instead of Unix `ipc://`.
+- Shared payload exchange and stage/device locks use Windows-safe file-backed helpers.
+- `fa3-fwd` is skipped on Windows because no compatible Windows wheel is available.
+- Keep `CUDA_HOME` and `CUDA_PATH` pointed at a path without spaces, such as a
+  junction to the CUDA toolkit directory.
+- See `README-WINDOWS.md` for a full CMD runbook, logging commands, stop
+  commands, and generated `vllm-omni serve` argument references.

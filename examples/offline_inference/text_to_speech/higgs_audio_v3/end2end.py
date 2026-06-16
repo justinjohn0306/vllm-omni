@@ -28,6 +28,8 @@ import os
 os.environ.setdefault("VLLM_USE_DEEP_GEMM", "0")
 os.environ.setdefault("VLLM_MOE_USE_DEEP_GEMM", "0")
 
+import copy
+import json
 import re
 import time
 from pathlib import Path
@@ -93,6 +95,21 @@ def parse_args():
         default=None,
         help="Transcript of the reference audio. Optional but improves fidelity.",
     )
+    parser.add_argument(
+        "--attention-backend",
+        type=str,
+        default="TRITON_ATTN" if os.name == "nt" else None,
+        help=(
+            "Override Stage-0 attention backend. Defaults to TRITON_ATTN on "
+            "Windows to avoid FlashInfer JIT builds that require cl.exe."
+        ),
+    )
+    parser.add_argument(
+        "--stage-overrides",
+        type=str,
+        default=None,
+        help='Extra per-stage override JSON, e.g. {"0": {"gpu_memory_utilization": 0.55}}.',
+    )
     return parser.parse_args()
 
 
@@ -126,12 +143,41 @@ def _pcm_to_int16(pcm: torch.Tensor) -> np.ndarray:
     return arr
 
 
+def _build_stage_overrides(args) -> dict[str, dict] | None:
+    if args.stage_overrides:
+        try:
+            overrides = json.loads(args.stage_overrides)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"--stage-overrides must be valid JSON: {exc}") from exc
+    else:
+        overrides = {}
+
+    if not isinstance(overrides, dict):
+        raise TypeError("--stage-overrides must decode to a JSON object")
+
+    if args.attention_backend:
+        stage0 = overrides.setdefault("0", {})
+        if not isinstance(stage0, dict):
+            raise TypeError('--stage-overrides["0"] must be a JSON object')
+        stage0.setdefault("attention_backend", args.attention_backend)
+
+    return overrides or None
+
+
 def main():
     args = parse_args()
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    engine = Omni(model=args.model, deploy_config=args.deploy_config, trust_remote_code=True)
+    omni_kwargs = {
+        "deploy_config": args.deploy_config,
+        "trust_remote_code": True,
+    }
+    stage_overrides = _build_stage_overrides(args)
+    if stage_overrides:
+        omni_kwargs["stage_overrides"] = stage_overrides
+
+    engine = Omni(model=args.model, **omni_kwargs)
 
     from transformers import AutoTokenizer
 
@@ -183,7 +229,10 @@ def main():
             prompt = {"prompt_token_ids": prompt_ids}
 
         t_start = time.perf_counter()
-        outputs = engine.generate([prompt])
+        sampling_params_list = copy.deepcopy(engine.default_sampling_params_list)
+        if args.max_new_tokens is not None and sampling_params_list:
+            sampling_params_list[0].max_tokens = args.max_new_tokens
+        outputs = engine.generate([prompt], sampling_params_list=sampling_params_list)
         elapsed = time.perf_counter() - t_start
         total_elapsed += elapsed
 

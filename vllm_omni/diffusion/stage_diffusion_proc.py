@@ -10,6 +10,7 @@ import asyncio
 import contextlib
 import multiprocessing.connection
 import signal
+import sys
 from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
@@ -20,7 +21,7 @@ import zmq
 import zmq.asyncio
 from PIL import Image
 from vllm.logger import init_logger
-from vllm.utils.network_utils import get_open_zmq_ipc_path, zmq_socket_ctx
+from vllm.utils.network_utils import get_open_port, get_open_zmq_ipc_path, get_tcp_uri, zmq_socket_ctx
 from vllm.utils.system_utils import get_mp_context
 from vllm.v1.engine.core import EngineCoreProc
 from vllm.v1.engine.utils import CoreEngine, EngineZmqAddresses, wait_for_engine_startup
@@ -43,6 +44,12 @@ if TYPE_CHECKING:
     from vllm_omni.diffusion.data import OmniDiffusionConfig
 
 logger = init_logger(__name__)
+
+
+def _get_open_zmq_path() -> str:
+    if sys.platform == "win32":
+        return get_tcp_uri("127.0.0.1", get_open_port())
+    return get_open_zmq_ipc_path()
 
 
 _SIGNAL_EXIT_BASE = 128
@@ -775,10 +782,10 @@ class StageDiffusionProcManager:
         omni_stage_id: int | None = None,
         omni_replica_id: int = 0,
     ) -> None:
-        handshake_address = handshake_address or get_open_zmq_ipc_path()
+        handshake_address = handshake_address or _get_open_zmq_path()
         addresses = addresses or EngineZmqAddresses(
-            inputs=[get_open_zmq_ipc_path()],
-            outputs=[get_open_zmq_ipc_path()],
+            inputs=[_get_open_zmq_path()],
+            outputs=[_get_open_zmq_path()],
         )
 
         ctx = get_mp_context()
